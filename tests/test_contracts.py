@@ -6,6 +6,7 @@ from axm_device_fabric.contracts import (
     Capability,
     DeviceState,
     digest,
+    validate_receipt_against_request,
     validate_request_against_state,
 )
 
@@ -24,6 +25,7 @@ class ContractTests(unittest.TestCase):
                     available=True,
                     authority="granted",
                     grant_ref="grant:test-session",
+                    operations=("open_settings",),
                     evidence_refs=("evidence:hierarchy:001",),
                 ),
             ),
@@ -32,13 +34,9 @@ class ContractTests(unittest.TestCase):
             current_surface="home",
         )
 
-    def test_digest_is_stable(self):
-        state = self.make_state()
-        self.assertEqual(digest(state), digest(state))
-
-    def test_matching_request_passes(self):
-        state = self.make_state()
-        request = ActionRequest(
+    def make_request(self, state=None):
+        state = state or self.make_state()
+        return ActionRequest(
             request_id="action-001",
             device_id=state.device_id,
             capability="ui.navigate",
@@ -47,6 +45,14 @@ class ContractTests(unittest.TestCase):
             state_digest=digest(state),
             grant_ref="grant:test-session",
         )
+
+    def test_digest_is_stable(self):
+        state = self.make_state()
+        self.assertEqual(digest(state), digest(state))
+
+    def test_matching_request_passes(self):
+        state = self.make_state()
+        request = self.make_request(state)
         self.assertEqual(validate_request_against_state(state, request), ())
 
     def test_unknown_authority_does_not_pass(self):
@@ -57,7 +63,12 @@ class ContractTests(unittest.TestCase):
             connection="connected",
             observed_at="2026-09-14T06:00:00+02:00",
             capabilities=(
-                Capability(name="ui.navigate", available=True, authority="unknown"),
+                Capability(
+                    name="ui.navigate",
+                    available=True,
+                    authority="unknown",
+                    operations=("open",),
+                ),
             ),
         )
         request = ActionRequest(
@@ -89,6 +100,31 @@ class ContractTests(unittest.TestCase):
             validate_request_against_state(state, request),
         )
 
+    def test_granted_capability_requires_explicit_operations(self):
+        with self.assertRaises(ValueError):
+            Capability(
+                name="ui.navigate",
+                available=True,
+                authority="granted",
+                grant_ref="grant:test-session",
+            )
+
+    def test_operation_outside_grant_is_blocked(self):
+        state = self.make_state()
+        request = ActionRequest(
+            request_id="action-unsafe",
+            device_id=state.device_id,
+            capability="ui.navigate",
+            operation="factory_reset",
+            requested_by="axm:test",
+            state_digest=digest(state),
+            grant_ref="grant:test-session",
+        )
+        self.assertIn(
+            "operation_not_granted",
+            validate_request_against_state(state, request),
+        )
+
     def test_receipt_status_is_bounded(self):
         with self.assertRaises(ValueError):
             ActionReceipt(
@@ -98,6 +134,34 @@ class ContractTests(unittest.TestCase):
                 request_digest="sha256:x",
                 completed_at="2026-09-14T06:00:00+02:00",
             )
+
+    def test_matching_receipt_links_to_exact_request(self):
+        state = self.make_state()
+        request = self.make_request(state)
+        receipt = ActionReceipt(
+            request_id=request.request_id,
+            device_id=request.device_id,
+            status="succeeded",
+            request_digest=digest(request),
+            completed_at="2026-09-14T06:01:00+02:00",
+            evidence_refs=("evidence:screenshot:002",),
+        )
+        self.assertEqual(validate_receipt_against_request(request, receipt), ())
+
+    def test_receipt_request_digest_mismatch_is_detected(self):
+        state = self.make_state()
+        request = self.make_request(state)
+        receipt = ActionReceipt(
+            request_id=request.request_id,
+            device_id=request.device_id,
+            status="succeeded",
+            request_digest="sha256:not-the-request",
+            completed_at="2026-09-14T06:01:00+02:00",
+        )
+        self.assertIn(
+            "request_digest_mismatch",
+            validate_receipt_against_request(request, receipt),
+        )
 
 
 if __name__ == "__main__":

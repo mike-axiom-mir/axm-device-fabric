@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "axm-device-fabric"
+version = "0.1.0"
+description = "Experimental platform-neutral device capability contracts for AXM"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [
+  { name = "AXM / Axiom-Mir" }
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

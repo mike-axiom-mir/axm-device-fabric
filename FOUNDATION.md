@@ -1,6 +1,6 @@
 # AXM Device Fabric Foundation
 
-Status: **pre-alpha research contract**
+Status: **pre-alpha research contract v0.1.1**
 
 ## Purpose
 
@@ -18,9 +18,11 @@ Only concepts that can plausibly survive across device types:
 - point-in-time observations;
 - advertised capabilities;
 - explicit authority state and grant reference;
+- explicit operation scope inside each granted capability;
 - bounded action requests;
 - before-state linkage;
 - outcome receipts;
+- receipt-to-request linkage;
 - evidence references;
 - explicit unknown / failure states.
 
@@ -37,7 +39,7 @@ Platform-specific mechanics stay outside the core. Examples:
 
 An adapter translates between its native mechanics and the neutral contract. It must not fabricate neutral facts that the native system did not actually provide.
 
-## Contract direction v0.1
+## Contract direction v0.1.1
 
 ### DeviceState
 
@@ -47,13 +49,15 @@ The state has a deterministic digest. An action can be tied to that digest so st
 
 ### Capability
 
-A named operation family advertised by an adapter. v0.1 keeps three authority states:
+A named operation family advertised by an adapter. v0.1.1 keeps three authority states:
 
 - `granted`
 - `denied`
 - `unknown`
 
 `unknown` is deliberately not equivalent to granted. A granted capability requires a grant reference so authority can be traced instead of silently inferred.
+
+A granted capability also requires an explicit `operations` tuple. This closes a real v0.1 gap: granting a broad family such as `ui.navigate` must not accidentally make every arbitrary operation submitted under that family executable. The structural gate blocks requests whose operation is outside the advertised grant scope.
 
 The exact grant system is intentionally outside this first contract; different AXM products may obtain legitimate grants differently.
 
@@ -63,7 +67,7 @@ One bounded operation addressed to one device, one capability, and one observed 
 
 ### ActionReceipt
 
-One outcome record tied to the exact request digest. v0.1 allows:
+One outcome record tied to the exact request digest. v0.1.1 allows:
 
 - `succeeded`
 - `failed`
@@ -71,6 +75,8 @@ One outcome record tied to the exact request digest. v0.1 allows:
 - `unknown`
 
 A receipt is evidence about what the adapter reports happened. It is not magical proof that every external consequence was observed.
+
+`validate_receipt_against_request()` checks request ID, device ID, and deterministic request digest so a later worker can detect a receipt that has been attached to the wrong action.
 
 ## Root mapping
 
@@ -80,6 +86,7 @@ A receipt is evidence about what the adapter reports happened. It is not magical
 - stale-state mismatch is explicit;
 - unavailable capabilities cannot silently become available;
 - receipts distinguish success, failure, blocked, and unknown;
+- receipt linkage is structurally checkable;
 - device-specific observations remain attributable to their adapter/evidence.
 
 ### Agency / non-domination
@@ -87,21 +94,24 @@ A receipt is evidence about what the adapter reports happened. It is not magical
 - authority is explicit per capability;
 - `unknown` and `denied` do not execute through the structural gate;
 - granted authority must carry a traceable grant reference;
-- a request cannot substitute another grant reference.
+- a request cannot substitute another grant reference;
+- granted capability families must enumerate their currently permitted operations;
+- an operation outside that set is blocked even when the family itself is granted.
 
 ### Continuity
 
 - device IDs, request IDs, state digests, request digests, and evidence references give later workers stable anchors;
+- receipts can be checked against the exact request they report on;
 - platform-specific provenance is preserved rather than rewritten into generic claims.
 
 ### Wisdom before speed
 
-- a disconnected device, stale state, absent capability, or missing authority blocks the small structural gate instead of being hidden by optimistic fallback;
+- a disconnected device, stale state, absent capability, missing authority, or out-of-scope operation blocks the small structural gate instead of being hidden by optimistic fallback;
 - richer recovery behavior can be added later when evidence shows what is actually needed.
 
-## Non-goals for v0.1
+## Non-goals for v0.1.1
 
-This first contract does not claim to provide:
+This contract does not claim to provide:
 
 - complete device security;
 - a universal permissions system;
@@ -121,7 +131,7 @@ The first real-device experiment should answer only what we can measure:
 
 1. What stable device identity can the adapter expose?
 2. Which observations are reliable enough to reference as evidence?
-3. Which action families can be advertised without exaggeration?
+3. Which action families and exact operations can be advertised without exaggeration?
 4. What happens when state changes between observe and act?
 5. What evidence exists for success, failure, block, disconnect, and reconnect?
 6. How much of this mapping remains meaningful when Android terms are removed?

@@ -1,4 +1,4 @@
-"""Small deterministic contracts for AXM Device Fabric v0.1.
+"""Small deterministic contracts for AXM Device Fabric v0.1.1.
 
 This module intentionally contains no device-specific control code.
 Adapters translate platform-specific observations/actions into these contracts.
@@ -11,7 +11,7 @@ from hashlib import sha256
 import json
 from typing import Any, Mapping
 
-SCHEMA_VERSION = "0.1"
+SCHEMA_VERSION = "0.1.1"
 
 AUTHORITY_STATES = {"granted", "denied", "unknown"}
 CONNECTION_STATES = {"connected", "disconnected", "degraded", "unknown"}
@@ -45,12 +45,17 @@ class Capability:
 
     ``authority`` is deliberately explicit. Unknown is not treated as granted.
     ``grant_ref`` points to the external evidence/policy that granted authority.
+
+    ``operations`` is the bounded set of operations this capability may execute.
+    A granted capability without an explicit operation set is invalid: a family
+    name alone must not silently authorize arbitrary operations.
     """
 
     name: str
     available: bool
     authority: str = "unknown"
     grant_ref: str | None = None
+    operations: tuple[str, ...] = ()
     evidence_refs: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -60,6 +65,14 @@ class Capability:
             raise ValueError(f"invalid authority state: {self.authority}")
         if self.authority == "granted" and not self.grant_ref:
             raise ValueError("granted capability requires grant_ref")
+
+        normalized = [operation.strip() for operation in self.operations]
+        if any(not operation for operation in normalized):
+            raise ValueError("capability operations must not contain empty values")
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("capability operations must be unique")
+        if self.authority == "granted" and not normalized:
+            raise ValueError("granted capability requires explicit operations")
 
 
 @dataclass(frozen=True)
@@ -179,5 +192,33 @@ def validate_request_against_state(
         blockers.append("capability_not_granted")
     elif capability.grant_ref != request.grant_ref:
         blockers.append("grant_ref_mismatch")
+
+    if request.operation not in capability.operations:
+        blockers.append("operation_not_granted")
+
+    return tuple(blockers)
+
+
+def validate_receipt_against_request(
+    request: ActionRequest,
+    receipt: ActionReceipt,
+) -> tuple[str, ...]:
+    """Return continuity blockers between an action request and its receipt.
+
+    A structurally valid receipt is still not proof of every external effect.
+    This only checks that the receipt is linked to the exact request/device it
+    claims to report on.
+    """
+
+    blockers: list[str] = []
+
+    if receipt.request_id != request.request_id:
+        blockers.append("request_id_mismatch")
+
+    if receipt.device_id != request.device_id:
+        blockers.append("device_id_mismatch")
+
+    if receipt.request_digest != digest(request):
+        blockers.append("request_digest_mismatch")
 
     return tuple(blockers)

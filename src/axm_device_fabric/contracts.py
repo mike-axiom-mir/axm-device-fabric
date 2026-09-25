@@ -31,6 +31,7 @@ def canonical_json(value: Any) -> str:
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
+        allow_nan=False,
     )
 
 
@@ -59,6 +60,8 @@ class Capability:
     evidence_refs: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        if not isinstance(self.available, bool):
+            raise ValueError("capability available must be a boolean")
         if not self.name.strip():
             raise ValueError("capability name must not be empty")
         if self.authority not in AUTHORITY_STATES:

@@ -50,6 +50,24 @@ class ContractTests(unittest.TestCase):
         state = self.make_state()
         self.assertEqual(digest(state), digest(state))
 
+    def test_availability_requires_an_explicit_boolean(self):
+        for value in ("false", "true", 0, 1, None, [], {}):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                Capability(name="ui.navigate", available=value, authority="granted",
+                           grant_ref="grant:test", operations=("open",))
+
+    def test_unavailable_capability_stays_blocked(self):
+        from dataclasses import replace
+        state = self.make_state()
+        state = replace(state, capabilities=(replace(state.capabilities[0], available=False),))
+        self.assertIn("capability_unavailable", validate_request_against_state(state, self.make_request(state)))
+
+    def test_nonfinite_observations_cannot_acquire_a_state_digest(self):
+        from dataclasses import replace
+        for value in (float("nan"), float("inf"), -float("inf")):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                digest(replace(self.make_state(), observations={"reading": [value]}))
+
     def test_matching_request_passes(self):
         state = self.make_state()
         request = self.make_request(state)

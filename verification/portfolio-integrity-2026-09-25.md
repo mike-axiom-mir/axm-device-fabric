@@ -21,3 +21,5 @@ Command: `PYTHONPATH=src:. python -m unittest discover -s tests -v`
 12 tests passed.
 
 Regression tests exercise invalid input and valid-state continuity. The full repository command above passed on the repaired working tree. No production-readiness, deployment, or CANON claim is made.
+
+Package metadata now declares MPL-2.0, matching the existing LICENSE and LICENSE_BOUNDARY.md. No license text or historical grant was changed.
